@@ -273,6 +273,7 @@ operator raises `max_deletion_ratio` for one run after verifying the TOC.
 
 | Parameter | Default | Meaning |
 |---|---|---|
+| `purge` | `false` | `true` deletes all documents of the configuration and ends the run (4.7) |
 | `full` | `false` | `true` re-indexes every law regardless of its validator |
 | `laws` | empty | comma-separated slugs; restricts the run to these laws |
 | `limit` | `0` | maximum number of laws processed; `0` is unlimited |
@@ -288,6 +289,26 @@ operator raises `max_deletion_ratio` for one run after verifying the TOC.
 A parameter value that cannot be parsed or lies outside its valid range ends the
 run with a `DataStoreException` that names the parameter. Unknown values are never
 replaced by a default. `script_type` keeps its Fess meaning.
+
+### 4.7 Purge
+
+A run with `purge=true` removes the documents of the configuration from the index.
+It replaces the run of 4.3:
+
+1. Refresh the update index.
+2. Delete all documents with the `config_id` of the configuration.
+3. Log the number of deleted documents.
+
+- A purge run sends no HTTP request and stores no document.
+- `purge=true` together with `full=true`, `laws` or `limit` ends the run with a
+  `DataStoreException` before any deletion.
+- `max_deletion_ratio` does not apply to a purge run.
+- A failed delete query is logged, recorded through `FailureUrlService`, and
+  leaves the remaining documents for the next purge run.
+- The field definitions of 3.6 remain in the index mapping.
+
+The parameter stays in effect for every run until the operator removes it. A
+scheduled run with `purge=true` on an empty configuration deletes nothing.
 
 ## 5. Security and robustness
 
@@ -354,11 +375,43 @@ Data store configuration (Crawler > Data Store):
 One configuration indexes the whole corpus. Two configurations must not index the
 same law: their documents would share IDs when roles and virtual hosts are equal.
 
+### 6.1 Coexistence with other crawlers
+
+The plugin shares the Fess document index with Web, File System and other data
+store configurations.
+
+- **Deletion scope.** Every delete query of the plugin contains the `config_id`
+  of its own configuration (4.4). Documents of other configurations are never
+  matched.
+- **Parameter scope.** Fess creates one parameter map per data store
+  configuration (`DataIndexHelper.doCrawl`). The forced `delete_old_docs=false`
+  (4.1) applies to the `GiiDataStore` configuration only.
+- **Expiry of other documents.** The Fess purge job deletes all documents whose
+  `expires` date has passed (`PurgeDocJob.execute`). Documents of Web and File
+  System configurations keep their `expires` field and expire as configured.
+- **Index mapping.** The registration of the `gii_*` fields (3.6) adds six field
+  definitions to the mapping of the index. Only documents of the plugin carry
+  values in these fields. Existing documents are not rewritten.
+
+Constraints for the operator:
+
+- **Host exclusion.** Web crawl configurations must exclude
+  `www.gesetze-im-internet.de`. A Web crawl of that host produces documents with
+  the URLs of the plugin's documents; Fess derives the document ID from the URL,
+  so both configurations overwrite each other's documents on every run.
+- **Removal of the configuration.** Documents of the plugin carry no `expires`
+  field, and Fess 15.7.0 does not delete documents when a data store
+  configuration is deleted or disabled. Before deleting or disabling the
+  configuration, the operator must set `purge=true` and start one crawl run
+  (4.7).
+- **Re-indexing after a purge.** The operator must remove `purge=true` before the
+  next regular run. That run finds an empty state and indexes the whole corpus.
+
 ## 7. Components
 
 | Unit | Responsibility | Source-neutral |
 |---|---|---|
-| `GiiDataStore` | parameters, run (4.3), field assembly (3.3), scripts, statistics, failure recording | no |
+| `GiiDataStore` | parameters, run (4.3), purge (4.7), field assembly (3.3), scripts, statistics, failure recording | no |
 | `support.HttpFetcher` | conditional, bounded, retrying GET on one allowed host; returns status, validator and body | yes |
 | `support.TocParser` | TOC stream to `List<LawRef>`; validates links (5.1) | no |
 | `support.LawArchive` | archive bytes to XML bytes within limits (5.3) | yes |
@@ -411,6 +464,10 @@ built from these files.
 - `store` sets `delete_old_docs=false`, and stored documents carry no `expires`.
 - A script cannot change `url`, `gii_law`, `gii_validator`, `segment`, `config_id`.
 - An invalid parameter value ends the run with a `DataStoreException`.
+- A run with `purge=true` deletes the documents of its own `config_id`, keeps
+  documents of another `config_id`, sends no HTTP request and stores no document.
+- `purge=true` combined with `full=true`, `laws` or `limit` ends the run with a
+  `DataStoreException` and deletes nothing.
 
 **DI wiring test**: the container resolves `GiiDataStore` through
 `DataStoreFactory` by its handler name.
@@ -462,6 +519,9 @@ describe another project and do not apply to this plugin.
 | Stale deletion in `finally` | `DataIndexHelper.DataCrawlingThread.process` and `deleteOldDocs`, Fess 15.7.0 |
 | Default fields and `expires` | `AbstractDataStore.store`, `CrawlingInfoHelper.getDocumentExpires`, Fess 15.7.0 |
 | Document ID from URL | `CrawlingInfoHelper.generateId`, Fess 15.7.0 |
+| Parameter map per configuration | `DataIndexHelper.doCrawl` creates a `DataStoreParams` per `DataConfig`, Fess 15.7.0 |
+| Purge by `expires` | `PurgeDocJob.execute` deletes by a range query on `expires`, Fess 15.7.0 |
+| No deletion on configuration removal | `IndexingHelper.deleteByConfigId` has no caller in Fess 15.7.0 |
 
 ## Appendix B: RII facts for a later version
 
