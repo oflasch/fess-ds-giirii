@@ -62,7 +62,7 @@ jobs:
         CENTRAL_PASSWORD: ${{ secrets.CENTRAL_PASSWORD }}
         MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         SKIP_PUBLISHING: ${{ github.event_name != 'push' }}
-      run: mvn -B -Prelease deploy -DskipPublishing="$SKIP_PUBLISHING"
+      run: mvn -B -Prelease deploy -DskipPublishing="$SKIP_PUBLISHING" -DautoPublish=true
     - uses: actions/upload-artifact@v7
       with:
         name: release-jar
