@@ -44,6 +44,14 @@ missing header, it never rewrites an existing one** — so after editing
 - **Tags are semantic versions** — `vMAJOR.MINOR.PATCH`, annotated, one per
   release, with a message in the same register as a commit body. Nothing in the
   tree carries the version; the tag is the only place it lives.
+- **Pushing a tag releases.** `.github/workflows/release.yml` publishes tag
+  `vX.Y.Z` to Maven Central as version `<Fess version>-X.Y.Z` and creates the
+  GitHub release from the tag message. The Fess version is the version of the
+  parent `fess-parent`. The tag must be annotated and on `main`. A manual run
+  of the workflow is a dry run. You must never move a pushed tag: a failed
+  release is fixed on `main` and shipped under the next patch version. When the
+  job `github-release` fails, use "Re-run failed jobs"; a full re-run is
+  rejected by Central, which accepts each version once.
 
 ## Style of documentation
 

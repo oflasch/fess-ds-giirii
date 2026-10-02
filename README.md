@@ -36,9 +36,26 @@ bundles no dependency. `mvn test` runs offline.
 
 ## Installation
 
-1. Copy `fess-ds-giirii-15.7.0.jar` to `app/WEB-INF/plugin/` of the Fess
+Releases are published on Maven Central as
+`de.oliverflasch:fess-ds-giirii:<Fess version>-<plugin version>` and on the
+[GitHub releases page](https://github.com/oflasch/fess-ds-giirii/releases).
+Version `15.7.0-1.0.1` is plugin version 1.0.1 for Fess 15.7.0.
+
+### From a downloaded JAR
+
+1. Copy `fess-ds-giirii-<version>.jar` to `app/WEB-INF/plugin/` of the Fess
    installation (`/usr/share/fess/app/WEB-INF/plugin/` in the Docker image).
 2. Restart Fess.
+
+### From the Fess admin UI
+
+1. Append `https://repo.maven.apache.org/maven2/de/oliverflasch/` to the
+   comma-separated list `plugin.repositories` in `fess_config.properties` and
+   restart Fess.
+2. Open *System > Plugin*, select *Install*, choose `fess-ds-giirii` and
+   install it. Fess lists the versions that start with its own major and minor
+   version.
+3. Restart Fess.
 
 ## Configuration
 
