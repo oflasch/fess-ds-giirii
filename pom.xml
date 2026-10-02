@@ -3,13 +3,21 @@
 	<modelVersion>4.0.0</modelVersion>
 	<groupId>de.oliverflasch</groupId>
 	<artifactId>fess-ds-giirii</artifactId>
-	<!-- The Maven version states which Fess release the plugin fits. -->
-	<version>15.7.0</version>
+	<!-- The Maven version starts with the Fess release the plugin fits. The release
+	     workflow replaces SNAPSHOT with the plugin version of the release tag. -->
+	<version>15.7.0-SNAPSHOT</version>
 	<packaging>jar</packaging>
 	<name>GiIRiI Data Store</name>
 	<description>Data store plugin for codelibs Fess that indexes the German federal statutes published on gesetze-im-internet.de</description>
 	<url>https://github.com/oflasch/fess-ds-giirii</url>
 	<inceptionYear>2026</inceptionYear>
+	<licenses>
+		<license>
+			<name>The Apache Software License, Version 2.0</name>
+			<url>https://www.apache.org/licenses/LICENSE-2.0.txt</url>
+			<distribution>repo</distribution>
+		</license>
+	</licenses>
 	<organization>
 		<name>Oliver Flasch</name>
 		<url>https://github.com/oflasch</url>
@@ -18,6 +26,7 @@
 		<developer>
 			<id>oflasch</id>
 			<name>Oliver Flasch</name>
+			<email>of@oliverflasch.de</email>
 		</developer>
 	</developers>
 	<scm>

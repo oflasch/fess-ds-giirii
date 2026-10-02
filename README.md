@@ -31,8 +31,8 @@ section 1.1 states the reason. `SPEC.md` is the specification of the plugin.
 mvn clean package
 ```
 
-The build produces `target/fess-ds-giirii-15.7.0.jar`. The plugin bundles no
-dependency. `mvn test` runs offline.
+The build produces `target/fess-ds-giirii-15.7.0-SNAPSHOT.jar`. The plugin
+bundles no dependency. `mvn test` runs offline.
 
 ## Installation
 

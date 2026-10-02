@@ -518,7 +518,8 @@ records the results.
 ## 9. Build and repository changes
 
 - `pom.xml`: `groupId` `de.oliverflasch`, `artifactId` `fess-ds-giirii`, version
-  15.7.0 (the Fess release the plugin fits), name and SCM updated, parent
+  `15.7.0-SNAPSHOT` (the Fess release the plugin fits; a release replaces
+  `SNAPSHOT` with the plugin version of its tag), name and SCM updated, parent
   `fess-parent` 15.7.0. The license plugin reads `etc/license-header.txt`; the
   import sorter runs in `process-sources`; `LICENSE` is packaged into the JAR. Remove the Sweble dependencies, the shade plugin,
   `commons-compress`, `jackson-databind`, the snapshot repository and the
