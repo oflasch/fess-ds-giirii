@@ -1,5 +1,4 @@
-# This workflow will build a Java project with Maven
-# For more information see: https://help.github.com/actions/language-and-framework-guides/building-and-testing-java-with-maven
+# Builds the plugin and runs its offline tests.
 
 name: Java CI with Maven
 
@@ -7,17 +6,13 @@ on:
   push:
     branches:
     - main
-    - "*.x"
   pull_request:
     branches:
     - main
-    - "*.x"
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    env:
-      PARENT_BRANCH: main
     steps:
     - uses: actions/checkout@v4
     - name: Set up JDK 21
@@ -31,15 +26,5 @@ jobs:
         key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
         restore-keys: |
           ${{ runner.os }}-maven-
-    - name: Checkout fess-parent
-      uses: actions/checkout@v4
-      with:
-        repository: codelibs/fess-parent
-        ref: ${{ env.PARENT_BRANCH }}
-        path: fess-parent
-    - name: Install fess-parent
-      run: |
-        cd fess-parent
-        mvn install -Dgpg.skip=true
     - name: Build with Maven
       run: mvn -B package --file pom.xml

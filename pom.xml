@@ -1,0 +1,183 @@
+<?xml version="1.0"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<groupId>de.oliverflasch</groupId>
+	<artifactId>fess-ds-giirii</artifactId>
+	<!-- The Maven version states which Fess release the plugin fits. -->
+	<version>15.7.0</version>
+	<packaging>jar</packaging>
+	<name>GiIRiI Data Store</name>
+	<description>Data store plugin for codelibs Fess that indexes the German federal statutes published on gesetze-im-internet.de</description>
+	<url>https://github.com/oflasch/fess-ds-giirii</url>
+	<inceptionYear>2026</inceptionYear>
+	<organization>
+		<name>Oliver Flasch</name>
+		<url>https://github.com/oflasch</url>
+	</organization>
+	<developers>
+		<developer>
+			<id>oflasch</id>
+			<name>Oliver Flasch</name>
+		</developer>
+	</developers>
+	<scm>
+		<connection>scm:git:git@github.com:oflasch/fess-ds-giirii.git</connection>
+		<developerConnection>scm:git:git@github.com:oflasch/fess-ds-giirii.git</developerConnection>
+		<url>https://github.com/oflasch/fess-ds-giirii</url>
+		<tag>HEAD</tag>
+	</scm>
+	<parent>
+		<groupId>org.codelibs.fess</groupId>
+		<artifactId>fess-parent</artifactId>
+		<version>15.7.0</version>
+		<relativePath />
+	</parent>
+	<build>
+		<resources>
+			<resource>
+				<directory>src/main/resources</directory>
+			</resource>
+			<!-- Apache 2.0 section 4(a) requires a copy of the licence to travel with the work. -->
+			<resource>
+				<directory>${project.basedir}</directory>
+				<includes>
+					<include>LICENSE</include>
+				</includes>
+			</resource>
+		</resources>
+		<plugins>
+			<plugin>
+				<artifactId>maven-compiler-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<failIfNoTests>true</failIfNoTests>
+					<systemPropertyVariables>
+						<!-- Fess resolves its runtime conf directory via this property
+						     (ResourceUtil.getConfPath). It points inside target/ so that tests
+						     never write a WEB-INF tree into the project root. -->
+						<fess.conf.path>${project.build.directory}/test-conf</fess.conf.path>
+					</systemPropertyVariables>
+				</configuration>
+			</plugin>
+			<plugin>
+				<artifactId>maven-source-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<artifactId>maven-javadoc-plugin</artifactId>
+				<configuration>
+					<!-- AGENTS.md requires Javadoc on private members as well; this makes the
+					     build check them. -->
+					<show>private</show>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>com.mycila</groupId>
+				<artifactId>license-maven-plugin</artifactId>
+				<configuration>
+					<!-- Override the inherited CodeLibs license configuration. fess-parent points
+					     both the header text and the header definition at https://www.codelibs.org,
+					     which would stamp these sources with the CodeLibs copyright and make every
+					     build fetch that text over the network. Both are replaced by a local file.
+					     combine.self="override" is required: without it Maven merges these list
+					     elements with the parent's instead of replacing them. -->
+					<headerDefinitions combine.self="override"/>
+					<mapping>
+						<java>SLASHSTAR_STYLE</java>
+					</mapping>
+					<licenseSets combine.self="override">
+						<licenseSet>
+							<header>${project.basedir}/etc/license-header.txt</header>
+							<includes>
+								<include>src/**/*.java</include>
+							</includes>
+						</licenseSet>
+					</licenseSets>
+				</configuration>
+			</plugin>
+			<plugin>
+				<groupId>net.revelc.code.formatter</groupId>
+				<artifactId>formatter-maven-plugin</artifactId>
+			</plugin>
+			<plugin>
+				<groupId>net.revelc.code</groupId>
+				<artifactId>impsort-maven-plugin</artifactId>
+				<version>1.12.0</version>
+				<configuration>
+					<compliance>21</compliance>
+					<removeUnused>true</removeUnused>
+					<staticAfter>false</staticAfter>
+					<groups>*</groups>
+				</configuration>
+				<executions>
+					<execution>
+						<id>sort-imports</id>
+						<goals>
+							<goal>sort</goal>
+						</goals>
+						<phase>process-sources</phase>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+	<!-- The plugin bundles no dependency: every library it uses ships with Fess, and the
+	     HTTP client, the ZIP reader and the StAX parser belong to the JDK. -->
+	<dependencies>
+		<dependency>
+			<groupId>jakarta.annotation</groupId>
+			<artifactId>jakarta.annotation-api</artifactId>
+			<version>${jakarta.annotation.api.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>jakarta.servlet</groupId>
+			<artifactId>jakarta.servlet-api</artifactId>
+			<version>${jakarta.servlet.api.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.codelibs</groupId>
+			<artifactId>corelib</artifactId>
+			<version>${corelib.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.lastaflute</groupId>
+			<artifactId>lastaflute</artifactId>
+			<version>${lastaflute.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.dbflute</groupId>
+			<artifactId>dbflute-runtime</artifactId>
+			<version>${dbflute.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.codelibs.fess</groupId>
+			<artifactId>fess</artifactId>
+			<version>${fess.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.opensearch</groupId>
+			<artifactId>opensearch</artifactId>
+			<version>${opensearch.version}</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>${junit.version}</version>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.dbflute.utflute</groupId>
+			<artifactId>utflute-lastaflute</artifactId>
+			<version>${utflute.version}</version>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+</project>

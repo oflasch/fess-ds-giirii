@@ -1,6 +1,6 @@
 # Specification: Fess Data Store Plugin for *Gesetze im Internet*
 
-Status: draft for review, 2026-10-01.
+Status: implemented, 2026-10-02. Appendix C records the end-to-end verification.
 
 ## 1. Purpose and scope
 
@@ -13,10 +13,10 @@ scheduled Fess crawl job.
 |---|---|
 | Fess version | 15.7.0 (released `fess-parent` and `fess` artifacts) |
 | Java level | 21 |
-| Maven artifact | `fess-ds-giirii` |
+| Maven artifact | `de.oliverflasch:fess-ds-giirii` |
 | Package root | `de.oliverflasch.fess.ds.giirii` |
 | Handler name | `GiiDataStore` |
-| Corpus | 6,135 laws, about 250 MB of ZIP archives, an estimated 150,000 to 250,000 sections |
+| Corpus | 6,135 laws, about 250 MB of ZIP archives, 108,651 documents (2026-10-02) |
 
 ### 1.1 Out of scope
 
@@ -82,7 +82,9 @@ The root element `dokumente` contains one `norm` element per unit of the law.
 - The DTD `gii-norm.dtd` declares parameter entities only. Documents use the five
   predefined XML entities. A parser that does not load the DTD reads every document.
 - Section labels (`enbez`) repeat within a law that consists of articles with their
-  own paragraph numbering (observed: 149 repeated labels in `bgbeg`).
+  own paragraph numbering (observed: 149 repeated labels in `bgbeg`). Such a section
+  norm carries a `gliederungseinheit` of its own that names the article
+  (`gliederungsbez`, for example `Art 224`).
 - A law can consist of the header norm alone (observed: `euv_2022_612`,
   `moselschabgt2002abest`).
 
@@ -129,7 +131,7 @@ a law with duplicate URLs after step 2 falls back to step 3.
 | Field | Value |
 |---|---|
 | `url` | see 3.2 |
-| `title` | `{enbez} {jurabk}`, followed by ` – {titel}` when the norm has a title. Law-level document: `{langue} ({jurabk})` |
+| `title` | `{enbez} {jurabk}`, followed by ` – {titel}` when the norm has a title. A section norm that carries its own `gliederungseinheit` is prefixed with its `gliederungsbez`: `Art 224 § 1 BGBEG – Abstammung`. Law-level document: `{langue} ({jurabk})` |
 | `content` | plain text of `Content` (3.4). Law-level document: `standangabe` comments and footnote text |
 | `important_content` | long title, short title, `jurabk`, `amtabk`, and the breadcrumb |
 | `digest` | first `max_digest_length` characters of `content` |
@@ -140,7 +142,7 @@ a law with duplicate URLs after step 2 falls back to step 3.
 | `lang` | `de` |
 | `mimetype`, `filetype` | `text/html`, `html` |
 | `gii_law` | slug of the law |
-| `gii_validator` | `ETag` of the archive; `Last-Modified` when the server sends no `ETag` |
+| `gii_validator` | `ETag` of the archive; `Last-Modified` when the server sends no `ETag`; `-` when it sends neither |
 | `gii_jurabk` | abbreviation of the law |
 | `gii_enbez` | section label |
 | `gii_doknr` | `doknr` of the norm |
@@ -149,20 +151,28 @@ a law with duplicate URLs after step 2 falls back to step 3.
 The enclosing structural units of a section are derived from
 `gliederungskennzahl`: a structural unit encloses the following norms until a
 structural unit with a `gliederungskennzahl` of equal or shorter length follows.
+The `gliederungseinheit` of a section norm extends the breadcrumb only when no
+structural norm with the same `gliederungskennzahl` precedes it.
 
 The fields `config_id`, `segment`, `created`, `boost`, `role` and `virtual_host`
 come from `AbstractDataStore.store`. The plugin removes `expires` (section 4.1).
 
 ### 3.4 Text extraction
 
-- Block elements (`P`, `DT`, `DD`, `LA`, `row`, `pre`, `Title`, `BR`) end with a
-  line break. Table cells (`entry`) are separated by a space.
-- `SUP`, `SUB`, `B`, `I`, `U`, `small` and `F` contribute their text inline.
+- Block elements (`P`, `DL`, `table`, `row`, `pre`, `Title`, `Subtitle`, `Ident`,
+  `Footnote`) stand on lines of their own. `BR` is a line break.
+- A list label (`DT`) and its item (`DD`) share one line: `1. Richtlinie …`. Every
+  `LA` within an item ends with a line break.
+- Table cells (`entry`) are separated by a space.
+- `SUP`, `SUB`, `B`, `I`, `U`, `SP`, `small` and `F` contribute their text inline.
 - `noindex`, `IMG`, `FILE`, `FnR`, `Footnotes` and `fussnoten` contribute no text to
   `content`.
-- The plugin removes control characters other than line break and tab, collapses
-  runs of spaces, and trims lines.
-- A section whose `content` is empty after extraction is indexed with its title.
+- Line breaks and tabs of the XML source are spaces; only markup produces line
+  breaks.
+- The plugin removes control characters, collapses runs of spaces, trims lines
+  and drops empty lines.
+- A section whose `content` is empty after extraction receives its title as
+  `content`.
 
 ### 3.5 Scripts
 
@@ -172,9 +182,9 @@ field it names. Scripts can reference all fields of 3.3 and additionally
 `footnotes`, `law_title`, `law_short_title`, `law_date` (`ausfertigung-datum`),
 `law_status` (list of `standangabe` comments) and `law_doknr`.
 
-Scripts cannot change `url`, `gii_law`, `gii_validator`, `segment` and `config_id`;
-the plugin sets these fields after script evaluation because the synchronization
-depends on them.
+Scripts cannot change `url`, `gii_law`, `gii_validator`, `segment`, `config_id` and
+`expires`; the plugin restores these fields after script evaluation because the
+synchronization depends on them.
 
 ### 3.6 Index mapping
 
@@ -195,8 +205,10 @@ synchronization this deletes every unchanged document, and after a failed run it
 deletes every law the run did not reach.
 
 - `GiiDataStore` overrides `store` and sets the parameter `delete_old_docs` to
-  `false` on the initial parameter map before it delegates to
-  `AbstractDataStore.store`. A value configured by the operator is overwritten.
+  `false` on the initial parameter map, before it delegates to
+  `AbstractDataStore.store` and again in a `finally` block afterwards. The base
+  class copies the parameters of the configuration into the same map, so the second
+  assignment overwrites a value configured by the operator, also after a failed run.
 - `GiiDataStore` removes `expires` from the default data map, so that the Fess
   purge job retains documents of unchanged laws
   (`CrawlingInfoHelper.getDocumentExpires` supplies a default expiry).
@@ -224,7 +236,8 @@ is treated as changed.
    1. Request the archive. Unless `full=true`, and when the state holds exactly one
       validator for the law, send it as `If-None-Match` (or `If-Modified-Since`
       for a `Last-Modified` validator). A validator that starts with `"` or `W/`
-      is an `ETag`.
+      is an `ETag`. The placeholder `-` is never sent; such a law is re-indexed on
+      every run.
    2. Status 304: the law is unchanged. Continue with the next law.
    3. Status 200: read the archive within its size limit, extract the XML (5.3),
       parse it (5.4), resolve the section URLs (3.2), and pass every document to
@@ -319,15 +332,19 @@ scheduled run with `purge=true` on an empty configuration deletes nothing.
 - A TOC link must match
   `^https?://www\.gesetze-im-internet\.de/([a-z0-9_-]+)/xml\.zip$`. The plugin
   extracts the slug and builds every request URL itself with the scheme `https`.
-- Section links from an index page must match `^[A-Za-z0-9_.-]+\.html$`. A link
-  outside this pattern causes the anchor fallback for the law (3.2).
+- Section links from an index page must match `^[A-Za-z0-9_.,:()~!-]+\.html$`.
+  Every allowed character is a literal URL path character; the site uses commas
+  and colons in some page names (`___21,_22.html`, `anlagen:.html`). A link outside
+  this pattern causes the anchor fallback for the law (3.2).
 - The HTTP client does not follow redirects. A 3xx response is a failure.
 - The plugin does not read files and does not accept a URL parameter from the
   data store configuration.
 
 ### 5.2 HTTP
 
-- Connect timeout 30 s; request timeout 120 s.
+- Connect timeout 30 s. The response headers must arrive within 120 s, and the
+  response body must be complete within a further 120 s; a watchdog closes a body
+  that stalls.
 - Every request sends the configured `User-Agent`; a blank value is replaced by
   the Fess crawler User-Agent and then by a fixed fallback.
 - Status 429 and 503 are retried up to 3 times. The wait follows `Retry-After`,
@@ -358,7 +375,8 @@ scheduled run with `purge=true` on an empty configuration deletes nothing.
 
 - The plugin holds the TOC entries, the state map and one law in memory.
 - The run is single-threaded. Daily cost with no changes: one TOC request and
-  6,135 conditional requests.
+  6,135 conditional requests, 25 minutes with the default `read_interval`
+  (Appendix C).
 - Log messages are parameterized and guarded. They contain slugs, counts, status
   codes and validators. They do not contain document text.
 
@@ -411,15 +429,21 @@ Constraints for the operator:
 
 | Unit | Responsibility | Source-neutral |
 |---|---|---|
-| `GiiDataStore` | parameters, run (4.3), purge (4.7), field assembly (3.3), scripts, statistics, failure recording | no |
-| `support.HttpFetcher` | conditional, bounded, retrying GET on one allowed host; returns status, validator and body | yes |
-| `support.TocParser` | TOC stream to `List<LawRef>`; validates links (5.1) | no |
+| `GiiDataStore` | Fess entry point: deletion ownership (4.1), wiring of the units below, statistics, failure recording | no |
+| `GiiParams` | validated parameters (4.6) | no |
+| `GiiSynchronizer` | run (4.3), deletion (4.4), failure handling (4.5), purge (4.7); no dependency on the Fess container | no |
+| `DocumentAssembler` | fields (3.3) and scripts (3.5) of one document | no |
+| `RunSummary` | counters of one run | no |
+| `support.HttpFetcher` | conditional, bounded, retrying GET on one site; returns status, validator and body | yes |
+| `support.TocParser` | TOC bytes to `List<LawRef>`; validates links (5.1) | no |
 | `support.LawArchive` | archive bytes to XML bytes within limits (5.3) | yes |
 | `support.LawParser` | XML to `Law` (metadata, list of `Section`) | no |
-| `support.NormTextExtractor` | StAX events of `Content` to plain text (3.4) | no |
+| `support.NormTextExtractor` | StAX events of an element to plain text (3.4) | no |
+| `support.StaxFactory` | hardened StAX factory (5.4) | yes |
 | `support.SectionLinkResolver` | index page and `Law` to section URLs (3.2) | no |
-| `support.IndexState` | mapping, state query, delete queries; the only class that uses the search engine client | yes (field names are constructor arguments) |
-| `support.LawRef`, `Law`, `Section`, `RunSummary` | immutable records | no |
+| `support.IndexState` | interface: mapping, state query, delete queries | yes |
+| `support.SearchEngineIndexState` | `IndexState` of a Fess index; the only class that uses the search engine client; field names are constructor arguments | yes |
+| `support.LawRef`, `Law`, `Section` | immutable records | no |
 
 `GiiDataStore` is registered in `src/main/resources/fess_ds++.xml` with
 `postConstruct name="register"`. `GiiDataStore` creates the support objects per
@@ -461,7 +485,8 @@ built from these files.
 - A TOC that lost more laws than `max_deletion_ratio` deletes nothing and records
   a failure.
 - A run with `laws` or `limit` deletes no removed law.
-- `store` sets `delete_old_docs=false`, and stored documents carry no `expires`.
+- `store` leaves `delete_old_docs=false` after a run that fails, also when the
+  operator configured `true`. A script cannot add `expires`.
 - A script cannot change `url`, `gii_law`, `gii_validator`, `segment`, `config_id`.
 - An invalid parameter value ends the run with a `DataStoreException`.
 - A run with `purge=true` deletes the documents of its own `config_id`, keeps
@@ -470,21 +495,32 @@ built from these files.
   `DataStoreException` and deletes nothing.
 
 **DI wiring test**: the container resolves `GiiDataStore` through
-`DataStoreFactory` by its handler name.
+`DataStoreFactory` by its handler name. `test_app.xml` includes the `fess_ds.xml`
+of Fess, into which LastaDi merges `fess_ds++.xml` as it does at runtime.
 
-**End-to-end check** in a local Fess 15.7.0 (`docker-fess`), outside `mvn test`:
+**Query scope test**: every delete query of `SearchEngineIndexState` filters by
+`config_id`.
 
-1. Run with `laws=gg,bgb`: about 2,750 documents; a search for
-   `Kaufvertrag` returns `§ 433 BGB` linking to `bgb/__433.html`.
+**End-to-end check** in a local Fess 15.7.0, outside `mvn test`. Appendix C
+records the results.
+
+1. Run with `laws=gg,bgb`: 2,756 documents; a search for a purchase contract
+   returns `§ 433 BGB` linking to `bgb/__433.html`.
 2. Second run: no archive download, no stored document, no deletion.
-3. Change `gii_validator` of the GG documents in the index, run again: GG is
-   re-indexed, BGB is skipped.
-4. Unrestricted run: record duration, document count and failures.
+3. Change `gii_validator` of the GG documents in the index and add a document of
+   an old session, run again: GG is re-indexed, the old document is deleted, BGB
+   is skipped.
+4. Run with `purge=true`: the documents of the configuration are deleted, a
+   document of another `config_id` remains.
+5. Unrestricted run: record duration, document count and failures.
+6. Unrestricted run without changes: record duration.
 
 ## 9. Build and repository changes
 
-- `pom.xml`: `artifactId` `fess-ds-giirii`, name and SCM updated, parent
-  `fess-parent` 15.7.0. Remove the Sweble dependencies, the shade plugin,
+- `pom.xml`: `groupId` `de.oliverflasch`, `artifactId` `fess-ds-giirii`, version
+  15.7.0 (the Fess release the plugin fits), name and SCM updated, parent
+  `fess-parent` 15.7.0. The license plugin reads `etc/license-header.txt`; the
+  import sorter runs in `process-sources`; `LICENSE` is packaged into the JAR. Remove the Sweble dependencies, the shade plugin,
   `commons-compress`, `jackson-databind`, the snapshot repository and the
   `distributionManagement` block. The plugin has no bundled dependency.
 - Delete `src/main/java/org/codelibs/fess/ds/wikipedia`, its tests, the fixtures
@@ -509,7 +545,7 @@ describe another project and do not apply to this plugin.
 | `http` redirects to `https` | `HEAD http://…/bgb/xml.zip` returned 302 |
 | Conditional requests | `If-None-Match` with the current `ETag` returned 304 for `bgb/xml.zip` |
 | Archive contents | listing of `bgb`, `gg`, `bimschv_1_2010`, `stvo_2013`, `estg`, `bbesg` |
-| TOC entry with 404 | `eu_fahrgrbusv/xml.zip` |
+| TOC entry with 404 | `eu_fahrgrbusv/xml.zip` on 2026-10-01; the archive was available during the full run of 2026-10-02 |
 | Norm kinds and counts | BGB: 2,841 norms, 2,551 with `enbez`, 289 structural units |
 | DTD without general entities | `dtd/1.01/gii-norm.dtd` |
 | Index links pair with sections by position | 6 laws, 4,865 sections: link and section counts are equal; 4,577 positional pairs match the naming rule, and the other 288 are the rule's known failures (repealed ranges, repeated labels in `bgbeg`) |
@@ -522,6 +558,40 @@ describe another project and do not apply to this plugin.
 | Parameter map per configuration | `DataIndexHelper.doCrawl` creates a `DataStoreParams` per `DataConfig`, Fess 15.7.0 |
 | Purge by `expires` | `PurgeDocJob.execute` deletes by a range query on `expires`, Fess 15.7.0 |
 | No deletion on configuration removal | `IndexingHelper.deleteByConfigId` has no caller in Fess 15.7.0 |
+
+## Appendix C: End-to-end verification
+
+The plugin JAR ran in an isolated Fess 15.7.0 container with an OpenSearch 3.6.0
+container (`ghcr.io/codelibs/fess:15.7.0`, `ghcr.io/codelibs/fess-opensearch:3.6.0`)
+against the live site on 2026-10-01 and 2026-10-02. One data store configuration
+with the handler `GiiDataStore` was created through the admin API and run by the
+*Default Crawler* job.
+
+| Run | Parameters | Result |
+|---|---|---|
+| Trial | `laws=gg,bgb` | 2 laws re-indexed, 2,756 documents stored, 10 s. The `gii_*` fields are mapped as `keyword`; no document carries `expires`; Fess deleted nothing |
+| Repeat | `laws=gg,bgb` | 2 unchanged, 0 stored, 0 deleted, 2 s; 2,756 documents remain |
+| Forged validator | `laws=gg,bgb`, GG validator overwritten, one planted GG document of an old session | GG re-indexed (205 stored), planted document deleted, BGB unchanged |
+| Purge | `purge=true`, one planted document of another `config_id` | 2,756 documents deleted, the planted document remains |
+| First full run | none | 6,135 laws re-indexed, 0 failed, 108,651 documents stored, 36 min; 173 law-level documents; index size about 500 MB |
+| Page names | `full=true`, `laws=alg,brrg,eemd-zvanl_i,kgugeg,wipro` | 441 stored, 441 anchor documents deleted; no anchor URL remains in the corpus |
+| Full run without changes | none | 6,135 unchanged, 0 stored, 0 deleted, 25 min |
+
+Findings that changed the implementation:
+
+- The first full run indexed five laws with anchor URLs. Four have page names
+  with a comma (`alg/___21,_22.html`), one a page name with a colon
+  (`eemd-zvanl_i/anlagen:.html`). The page name pattern of 5.1 was widened; the
+  "Page names" run verifies it.
+- A law that was indexed with anchor URLs keeps them until its archive changes
+  or a run with `full=true` re-indexes it.
+- The run without changes spends about 20 of its 25 minutes in `read_interval`
+  (6,135 × 200 ms). The remaining time is one conditional request per law.
+
+The Fess search page returned `§ 433 BGB – Vertragstypische Pflichten beim
+Kaufvertrag`, linking to `https://www.gesetze-im-internet.de/bgb/__433.html`, for
+the query `vertragstypische Pflichten Kaufvertrag`. The *Failure URL* list
+stayed empty in all runs.
 
 ## Appendix B: RII facts for a later version
 
